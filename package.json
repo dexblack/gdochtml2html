@@ -17,6 +17,9 @@
   "dependencies": {
     "extract-zip": "^2.0.1",
     "html-to-text": "^8.2.1",
+    "query-parse": "^2.0.0",
+    "unescape": "^1.0.1",
+    "url-parse": "^1.5.10",
     "yargs": "^17.6.0"
   }
 }

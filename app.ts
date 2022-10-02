@@ -3,6 +3,10 @@ import * as fs from 'fs';
 const path = require('node:path');
 const { htmlToText } = require('html-to-text');
 const { hideBin } = require('yargs/helpers')
+const urlparse = require('url-parse');
+const xmlunescape = require('unescape');
+const queryparse = require('query-parse');
+
 const ext_zip = '.zip';
 const ext_html = '.html';
 
@@ -26,6 +30,9 @@ async function unzipGoogleDocHtml(source: string, target: string): Promise<strin
     try {
         const extract = require('extract-zip');
         const fileName = path.basename(source, ext_zip);
+        if (!path.isAbsolute(target)) {
+            target = path.join(process.cwd(), target);
+        }
         const outputPath = path.join(target, fileName.replaceAll(' ', '') + ext_html);
         if (fs.existsSync(outputPath)) {
             fs.unlinkSync(outputPath);
@@ -38,7 +45,7 @@ async function unzipGoogleDocHtml(source: string, target: string): Promise<strin
         return '';
     } catch (err) {
         // handle any errors
-        console.log('Error: ${err}');
+        console.log(`Error: ${err}`);
     }
     return '';
 }
@@ -55,12 +62,13 @@ function setLegalNumberingLevel(lvl: number) {
 }
 
 function startLegalNumberAt(attributes: object[]) {
-    attributes.forEach((value: object, index: number) => {
+    attributes.forEach((value: object) => {
         var name = '';
         Object.entries(value).forEach(([key, val]) => {
             if (name == 'start') {
                 if (key == 'value') {
-                    numbering[level-1] = parseInt(val) - 1;
+                    numbering[level] = parseInt(val) - 1;
+                    return;
                 }
             }
             else if (key == 'name') {
@@ -72,28 +80,74 @@ function startLegalNumberAt(attributes: object[]) {
     });
 }
 
+function getHrefUrl(attributes: object[]) : string {
+    var url = '';
+    attributes.forEach((value: object) => {
+        var name = '';
+        Object.entries(value).forEach(([key, val]) => {
+            if (name == 'href') {
+                url = val;
+                name = '';
+                return;
+            }
+            if (key == 'name') {
+                if (val == 'href') {
+                    name = val;
+                }
+            }
+        })
+    });
+    const urlParsed = urlparse(url);
+    const urlUnescaped = xmlunescape(urlParsed.query) as string;
+    const aQuery = '?q=';
+    const index = urlUnescaped.indexOf(aQuery);
+    if (index >= 0) {
+        const query = urlUnescaped.substr(index + 1);
+        const params = queryparse.toObject(query);
+        const maybeGreensUrl = params['q'];
+        const host = urlparse(maybeGreensUrl).host as string;
+        if (host == 'greens.org.au') {
+            url = maybeGreensUrl;
+        }
+    }
+    return url;
+}
+
 function nextLegalNumber(): string {
-    numbering[level - 1] += 1;
-    return '&nbsp;'.repeat((level - 1)*4) + numbering.slice(0, level).join('.') + '. ';
+    numbering[level] += 1;
+    const legalNumber = numbering.slice(0, level + 1).join('.') + '.';
+    const prefix = '&nbsp;'.repeat(level * 4) + legalNumber;
+    const maxLength = (level + 1) * 3 + 1;
+    return prefix + '&nbsp;'.repeat(legalNumber.length <= maxLength ? (maxLength - legalNumber.length) : 1);
 }
 
 // There is also an alias to `convert` called `htmlToText`.
 async function convertGoogleDocHtml(filePath: string) {
     if (!fs.existsSync(filePath)) {
-        console.log('File ${filePath} not found.');
+        console.log(`File ${filePath} not found.`);
         return;
     }
     const inFilePath = path.parse(filePath);
+    var htmlUnzippedFilePath;
     if (inFilePath.ext == '.zip') {
-        console.log('Unzipping ${source} to ${targetDir}.');
+        console.log(`Unzipping ${inFilePath.name} to ${inFilePath.dir}.`);
         await unzipGoogleDocHtml(filePath, inFilePath.dir)
             .then((htmlFilePath) => {
                 if (htmlFilePath.length == 0) {
                     console.log('Unexpected conversion failure.');
                     return;
                 }
+                htmlUnzippedFilePath = htmlFilePath;
                 const content = fs.readFileSync(htmlFilePath);
-                const html = content.toString().replace(/<style.*<\/style>/, '<link rel="stylesheet" href="style.css">');
+
+                const html = content.toString()
+                    .replace(/<style.*<\/style>/, '<link rel="stylesheet" href="style.css">')
+                    .replace(/lst-kix_[a-z0-9_]+-[0-9]+/g, (v) => {
+                        var s = 'lst' + v.substr(v.lastIndexOf('-'));
+                        return s;
+                    })
+                    .replace(/li-bullet-[0-9]/g, 'li-bullet-0');
+
                 const text = htmlToText(html, {
                     wordwrap: 300,
                     formatters: {
@@ -116,21 +170,21 @@ async function convertGoogleDocHtml(filePath: string) {
                         },
                         'olTagFormatter0': function (elem, walk, builder, formatOptions) {
                             builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(1);
+                            setLegalNumberingLevel(0);
                             startLegalNumberAt(elem.attributes);
                             walk(elem.children, builder);
                             builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
                         },
                         'olTagFormatter1': function (elem, walk, builder, formatOptions) {
                             builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(2);
+                            setLegalNumberingLevel(1);
                             startLegalNumberAt(elem.attributes);
                             walk(elem.children, builder);
                             builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
                         },
                         'olTagFormatter2': function (elem, walk, builder, formatOptions) {
                             builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(3);
+                            setLegalNumberingLevel(2);
                             startLegalNumberAt(elem.attributes);
                             walk(elem.children, builder);
                             builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
@@ -142,6 +196,13 @@ async function convertGoogleDocHtml(filePath: string) {
                             builder.addInline('</p>');
                             builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
                         },
+                        'anchorTagFormatter': function (elem, walk, builder, formatOptions) {
+                            builder.openBlock({ leadingLineBreaks: 0 });
+                            builder.addInline('<a href="' + getHrefUrl(elem.attributes) + '">');
+                            walk(elem.children, builder);
+                            builder.addInline('</a>');
+                            builder.closeBlock({ trailingLineBreaks: 0 });
+                        },
                     },
                     selectors: [
                         {
@@ -149,54 +210,63 @@ async function convertGoogleDocHtml(filePath: string) {
                             format: 'titleTagFormatter',
                         },
                         {
-                            selector: 'h1.c0',
+                            selector: 'h1',
                             format: 'headerTagFormatter',
                         },
                         {
-                            selector: 'h2.c0',
+                            selector: 'h2',
                             format: 'headerTagFormatter',
                         },
                         {
-                            selector: 'h3.c2',
+                            selector: 'h3',
                             format: 'headerTagFormatter',
                         },
                         {
-                            selector: 'h4.c0',
+                            selector: 'h4',
                             format: 'headerTagFormatter',
                         },
                         {
-                            selector: 'h5.c0',
+                            selector: 'h5',
                             format: 'headerTagFormatter',
                         },
                         {
-                            selector: 'ol.lst-kix_sf92m2rqhri-0',
+                            selector: 'ol.lst-0',
                             format: 'olTagFormatter0',
                         },
                         {
-                            selector: 'ol.lst-kix_sf92m2rqhri-1',
+                            selector: 'ol.lst-1',
                             format: 'olTagFormatter1',
                         },
                         {
-                            selector: 'ol.lst-kix_sf92m2rqhri-2',
+                            selector: 'ol.lst-2',
                             format: 'olTagFormatter2',
                         },
                         {
                             selector: 'li.li-bullet-0',
                             format: 'liTagFormatter0',
                         },
+                        {
+                            selector: 'a',
+                            format: 'anchorTagFormatter'
+                        }
                     ]
                 });
 
                 const htmlPlainFilePath = path.join(inFilePath.dir, inFilePath.name + '_plain' + ext_html);
-                console.log('Generating HTML: ${htmlPlainFilePath}.');
+                console.log(`Generating HTML: ${htmlPlainFilePath}.`);
                 if (fs.existsSync(htmlPlainFilePath)) {
                     fs.unlinkSync(htmlPlainFilePath);
                 }
+                
+                if (fs.existsSync(htmlUnzippedFilePath)) {
+                    fs.unlinkSync(htmlUnzippedFilePath);
+                }
+
                 fs.writeFileSync(htmlPlainFilePath, text);
                 fs.renameSync(htmlPlainFilePath, path.join(inFilePath.dir, inFilePath.name + ext_html));
             })
             .catch((err) => {
-                console.log('Error: ' + err.toString());
+                console.log(`Error: ${err}`);
             });
     }
 }
