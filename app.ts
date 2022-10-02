@@ -1,5 +1,5 @@
 const yargs = require('yargs');
-import * as fs from 'fs';
+const fs = require('fs');
 const path = require('node:path');
 const { htmlToText } = require('html-to-text');
 const { hideBin } = require('yargs/helpers')
