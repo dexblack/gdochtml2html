@@ -2,6 +2,10 @@
 Exported Google doc as zipped HTML conversion to raw HTML.
 
 	Usage: gdochtml2html convert zipFilePath
+	In reality you will have to run this with node.js
+	e.g. cmd> node app.js convert "C:\Users\myname\Downloads\policy name.zip"
+	If you have several files to process in your download folder
+	cmd> for %i in ("C:\Users\myname\Downloads\*.zip") do node app.js convert "%i"
 
 	Output: dir\zipBaseName.html
 
