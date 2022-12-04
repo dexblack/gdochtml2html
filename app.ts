@@ -116,9 +116,10 @@ function getHrefUrl(attributes: object[]) : string {
 function nextLegalNumber(): string {
     numbering[level] += 1;
     const legalNumber = numbering.slice(0, level + 1).join('.') + '.';
-    const prefix = '&nbsp;'.repeat(level * 4) + legalNumber;
-    const maxLength = (level + 1) * 3 + 1;
-    return prefix + '&nbsp;'.repeat(legalNumber.length <= maxLength ? (maxLength - legalNumber.length) : 1);
+    const prefix = legalNumber; // '&emsp;'.repeat(level * 4) + legalNumber;
+    const digits = ('' + (numbering[level])).length;
+    const maxLength = 3;
+    return prefix + ' '.repeat(digits <= maxLength ? (maxLength - digits) : 1);
 }
 
 // There is also an alias to `convert` called `htmlToText`.
@@ -153,6 +154,19 @@ async function convertGoogleDocHtml(filePath: string) {
                     formatters: {
                         'titleTagFormatter': function (elem, walk, builder, formatOptions) {
                             builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                            builder.addInline(
+                                //'<html>' +
+                                '<style type="text/css">' +
+                                '< !--/*--><![CDATA[/* ><!--*/' +
+                                '.indent--hanging__0 { padding-left: 2.4em; text-indent: -2.6em; }' +
+                                '.indent--hanging__1 { padding-left: 5.7em; text-indent: -3.4em; }' +
+                                '.indent--hanging__2 { padding-left: 10.3em; text-indent: -4.7em; }' +
+                                '.indent--hanging__3 { padding-left: 14.3em; text-indent: -5.7em; }' +
+                                '.indent--hanging__4 { padding-left: 21.1em; text-indent: -7em; }' +
+                                '/*--><!]]>*/' +
+                                '</style>'
+                                //+ '<body>'
+                            );
                             builder.addInline('<h1>');
                             walk(elem.children, builder);
                             builder.addInline('</h1>');
@@ -191,7 +205,7 @@ async function convertGoogleDocHtml(filePath: string) {
                         },
                         'liTagFormatter0': function (elem, walk, builder, formatOptions) {
                             builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            builder.addInline('<p>' + nextLegalNumber());
+                            builder.addInline('<p class="' + 'indent--hanging__' + level + '">' + nextLegalNumber());
                             walk(elem.children, builder);
                             builder.addInline('</p>');
                             builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
