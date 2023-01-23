@@ -1,0 +1,16 @@
+/* legal list styles */
+ol.policy {
+    counter-reset: legal;
+}
+
+ol.continued {
+    counter-reset: none;
+}
+
+ol.policy li {
+    counter-increment: legal;
+}
+
+ol.policy ::marker {
+    content: counters(legal, ".") ".  ";
+}

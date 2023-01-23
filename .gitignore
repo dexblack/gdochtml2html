@@ -1,3 +1,6 @@
+test/*.zip
+test/*.html
+
 # Logs
 logs
 *.log

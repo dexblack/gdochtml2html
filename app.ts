@@ -10,21 +10,33 @@ const queryparse = require('query-parse');
 const ext_zip = '.zip';
 const ext_html = '.html';
 
-yargs(hideBin(process.argv))
+var argv = yargs(hideBin(process.argv))
     .scriptName('gdochtml2html')
-    .usage('$0 <cmd> [file]')
-    .command('convert [file]', 'Google docs html output converter. Produce plain HTML.', (yargs) => {
-        yargs.positional('file', {
-            type: 'string',
-            default: '',
-            describe: 'Input Google docs generated HTML file.'
-        });
-    }, function (argv) {
-        console.log('Converting ', argv.file);
-        convertGoogleDocHtml(argv.file);
+    .usage('$0 [options] <file>')
+    .example('-c -f policy.zip')
+    .option('c', {
+        alias: 'css',
+        describe: 'Use CSS based legal numbering technique. refer to "legal_style.css"',
+        type: 'boolean'
     })
-    .parse()
+    .nargs('f', 1)
+    .alias('f', 'file')
+    .demandOption('f')
+    .help('help')
+    .alias('h', 'help')
+    .epilog('Copyright (C) 2023. Obedient Systems. dex@dexblack.com')
+    .version()
+    .argv;
 
+processFile(argv.file, argv.css);
+
+async function processFile(file_path: string, using_css: boolean) {
+    console.log('Converting ', file_path);
+    await convertFile(file_path, using_css)
+        .then(_ => {
+            console.log('Done');
+        });
+}
 
 async function unzipGoogleDocHtml(source: string, target: string): Promise<string> {
     try {
@@ -33,7 +45,7 @@ async function unzipGoogleDocHtml(source: string, target: string): Promise<strin
         if (!path.isAbsolute(target)) {
             target = path.join(process.cwd(), target);
         }
-        const outputPath = path.join(target, fileName.replaceAll(' ', '') + ext_html);
+        const outputPath = path.join(target, fileName.replaceAll(' ', '').replaceAll('-', '') + ext_html);
         if (fs.existsSync(outputPath)) {
             fs.unlinkSync(outputPath);
         }
@@ -80,7 +92,7 @@ function startLegalNumberAt(attributes: object[]) {
     });
 }
 
-function getHrefUrl(attributes: object[]) : string {
+function getHrefUrl(attributes: object[]): string {
     var url = '';
     attributes.forEach((value: object) => {
         var name = '';
@@ -123,7 +135,7 @@ function nextLegalNumber(): string {
 }
 
 // There is also an alias to `convert` called `htmlToText`.
-async function convertGoogleDocHtml(filePath: string) {
+async function convertFile(filePath: string, css: boolean) {
     if (!fs.existsSync(filePath)) {
         console.log(`File ${filePath} not found.`);
         return;
@@ -131,7 +143,7 @@ async function convertGoogleDocHtml(filePath: string) {
     const inFilePath = path.parse(filePath);
     var htmlUnzippedFilePath;
     if (inFilePath.ext == '.zip') {
-        console.log(`Unzipping ${inFilePath.name} to ${inFilePath.dir}.`);
+        console.log(`Unzipping to "${inFilePath.dir}${path.delimiter}${inFilePath.name}".`);
         await unzipGoogleDocHtml(filePath, inFilePath.dir)
             .then((htmlFilePath) => {
                 if (htmlFilePath.length == 0) {
@@ -141,140 +153,19 @@ async function convertGoogleDocHtml(filePath: string) {
                 htmlUnzippedFilePath = htmlFilePath;
                 const content = fs.readFileSync(htmlFilePath);
 
-                const html = content.toString()
-                    .replace(/<style.*<\/style>/, '<link rel="stylesheet" href="style.css">')
-                    .replace(/lst-kix_[a-z0-9_]+-[0-9]+/g, (v) => {
-                        var s = 'lst' + v.substr(v.lastIndexOf('-'));
-                        return s;
-                    })
-                    .replace(/li-bullet-[0-9]/g, 'li-bullet-0');
-
-                const text = htmlToText(html, {
-                    wordwrap: 300,
-                    formatters: {
-                        'titleTagFormatter': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            builder.addInline(
-                                //'<html>' +
-                                '<style type="text/css">' +
-                                '< !--/*--><![CDATA[/* ><!--*/' +
-                                '.indent--hanging__0 { padding-left: 2.4em; text-indent: -2.6em; }' +
-                                '.indent--hanging__1 { padding-left: 5.7em; text-indent: -3.4em; }' +
-                                '.indent--hanging__2 { padding-left: 10.3em; text-indent: -4.7em; }' +
-                                '.indent--hanging__3 { padding-left: 14.3em; text-indent: -5.7em; }' +
-                                '.indent--hanging__4 { padding-left: 21.1em; text-indent: -7em; }' +
-                                '/*--><!]]>*/' +
-                                '</style>'
-                                //+ '<body>'
-                            );
-                            builder.addInline('<h1>');
-                            walk(elem.children, builder);
-                            builder.addInline('</h1>');
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'subtitleTagFormatter': function (elem, walk, builder, formatOptions) {
-                        },
-                        'headerTagFormatter': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            const newH = incrementHeaderTag(elem.name);
-                            builder.addInline('<' + newH + '>');
-                            walk(elem.children, builder);
-                            builder.addInline('</' + newH + '>');
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'olTagFormatter0': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(0);
-                            startLegalNumberAt(elem.attributes);
-                            walk(elem.children, builder);
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'olTagFormatter1': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(1);
-                            startLegalNumberAt(elem.attributes);
-                            walk(elem.children, builder);
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'olTagFormatter2': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            setLegalNumberingLevel(2);
-                            startLegalNumberAt(elem.attributes);
-                            walk(elem.children, builder);
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'liTagFormatter0': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
-                            builder.addInline('<p class="' + 'indent--hanging__' + level + '">' + nextLegalNumber());
-                            walk(elem.children, builder);
-                            builder.addInline('</p>');
-                            builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
-                        },
-                        'anchorTagFormatter': function (elem, walk, builder, formatOptions) {
-                            builder.openBlock({ leadingLineBreaks: 0 });
-                            builder.addInline('<a href="' + getHrefUrl(elem.attributes) + '">');
-                            walk(elem.children, builder);
-                            builder.addInline('</a>');
-                            builder.closeBlock({ trailingLineBreaks: 0 });
-                        },
-                    },
-                    selectors: [
-                        {
-                            selector: 'p.title',
-                            format: 'titleTagFormatter',
-                        },
-                        {
-                            selector: 'h1',
-                            format: 'headerTagFormatter',
-                        },
-                        {
-                            selector: 'h2',
-                            format: 'headerTagFormatter',
-                        },
-                        {
-                            selector: 'h3',
-                            format: 'headerTagFormatter',
-                        },
-                        {
-                            selector: 'h4',
-                            format: 'headerTagFormatter',
-                        },
-                        {
-                            selector: 'h5',
-                            format: 'headerTagFormatter',
-                        },
-                        {
-                            selector: 'ol.lst-0',
-                            format: 'olTagFormatter0',
-                        },
-                        {
-                            selector: 'ol.lst-1',
-                            format: 'olTagFormatter1',
-                        },
-                        {
-                            selector: 'ol.lst-2',
-                            format: 'olTagFormatter2',
-                        },
-                        {
-                            selector: 'li.li-bullet-0',
-                            format: 'liTagFormatter0',
-                        },
-                        {
-                            selector: 'a',
-                            format: 'anchorTagFormatter'
-                        }
-                    ]
-                });
-
                 const htmlPlainFilePath = path.join(inFilePath.dir, inFilePath.name + '_plain' + ext_html);
                 console.log(`Generating HTML: ${htmlPlainFilePath}.`);
                 if (fs.existsSync(htmlPlainFilePath)) {
                     fs.unlinkSync(htmlPlainFilePath);
                 }
-                
+
                 if (fs.existsSync(htmlUnzippedFilePath)) {
                     fs.unlinkSync(htmlUnzippedFilePath);
                 }
+
+                var text = css
+                    ? convertUsingOlTags(content)
+                    : convertUsingPlainHtml(content);
 
                 fs.writeFileSync(htmlPlainFilePath, text);
                 fs.renameSync(htmlPlainFilePath, path.join(inFilePath.dir, inFilePath.name + ext_html));
@@ -283,5 +174,258 @@ async function convertGoogleDocHtml(filePath: string) {
                 console.log(`Error: ${err}`);
             });
     }
+}
+
+function convertUsingOlTags(content: any) {
+    const html = content.toString()
+        .replace(/<style.*<\/style>/, '<link rel="stylesheet" href="legal_style.css">')
+        .replace(/lst-kix_[a-z0-9_]+-[0-9]+/g, (v) => {
+            var s = 'lst' + v.substr(v.lastIndexOf('-'));
+            return s;
+        })
+        .replace(/li-bullet-[0-9]/g, 'li-bullet-0');
+
+    var continued = [false, false, false]; // one for each level of legal numbering; olTagFormatter0, 1, 2.
+    return htmlToText(html, {
+        wordwrap: 300,
+        formatters: {
+            'titleTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<h1 class="policy">');
+                walk(elem.children, builder);
+                builder.addInline('</h1>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'subtitleTagFormatter': function (elem, walk, builder, formatOptions) {
+            },
+            'headerTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                const newH = incrementHeaderTag(elem.name);
+                builder.addInline('<' + newH + '>');
+                walk(elem.children, builder);
+                builder.addInline('</' + newH + '>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter0': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<ol class="policy' + (continued[0] ? ' continued' : '') + '">');
+                walk(elem.children, builder);
+                builder.addInline('</ol>');
+                continued[0] = true;
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter1': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<ol class="policy">');
+                walk(elem.children, builder);
+                builder.addInline('</ol>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter2': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<ol class="policy">');
+                walk(elem.children, builder);
+                builder.addInline('</ol>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'liTagFormatter0': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<li>');
+                walk(elem.children, builder);
+                builder.addInline('</li>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'anchorTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<a href="' + getHrefUrl(elem.attributes) + '">');
+                walk(elem.children, builder);
+                builder.addInline('</a>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'paragraphTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<p>');
+                walk(elem.children, builder);
+                builder.addInline('</p>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            }
+        },
+        selectors: [
+            {
+                selector: 'p.title',
+                format: 'titleTagFormatter',
+            },
+            {
+                selector: 'h1',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h2',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h3',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h4',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h5',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'ol.lst-0',
+                format: 'olTagFormatter0',
+            },
+            {
+                selector: 'ol.lst-1',
+                format: 'olTagFormatter1',
+            },
+            {
+                selector: 'ol.lst-2',
+                format: 'olTagFormatter2',
+            },
+            {
+                selector: 'li.li-bullet-0',
+                format: 'liTagFormatter0',
+            },
+            {
+                selector: 'a',
+                format: 'anchorTagFormatter'
+            },
+            {
+                selector: 'p',
+                format: 'paragraphTagFormatter'
+            }
+        ]
+    });
+}
+
+function convertUsingPlainHtml(content: any) {
+    const html = content.toString()
+        .replace(/<style.*<\/style>/, '<link rel="stylesheet" href="style.css">')
+        .replace(/lst-kix_[a-z0-9_]+-[0-9]+/g, (v) => {
+            var s = 'lst' + v.substr(v.lastIndexOf('-'));
+            return s;
+        })
+        .replace(/li-bullet-[0-9]/g, 'li-bullet-0');
+
+    return htmlToText(html, {
+        wordwrap: 300,
+        formatters: {
+            'titleTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline(
+                    //'<html>' +
+                    '<style type="text/css">' +
+                    '< !--/*--><![CDATA[/* ><!--*/' +
+                    '.policy { counter-reset: section; }' +
+                    '.policy h2:before {   counter-increment: section; }' +
+                    '.policy ol { counter-reset: clause; list-style: none outside none; text-indent: -2em; }' +
+                    '.policy ol li { counter-increment: clause; }' +
+                    '.policy ol li:before { content: counter(section) "." counters(clause, ".") ". "; margin: 0 0.5em 0 0.5em; }' + '/*--><!]]>*/' +
+                    '</style>'
+                    //+ '<body>'
+                );
+                builder.addInline('<h1 id="policy">');
+                walk(elem.children, builder);
+                builder.addInline('</h1>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'subtitleTagFormatter': function (elem, walk, builder, formatOptions) {
+            },
+            'headerTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                const newH = incrementHeaderTag(elem.name);
+                builder.addInline('<' + newH + '>');
+                walk(elem.children, builder);
+                builder.addInline('</' + newH + '>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter0': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                setLegalNumberingLevel(0);
+                startLegalNumberAt(elem.attributes);
+                walk(elem.children, builder);
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter1': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                setLegalNumberingLevel(1);
+                startLegalNumberAt(elem.attributes);
+                walk(elem.children, builder);
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'olTagFormatter2': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                setLegalNumberingLevel(2);
+                startLegalNumberAt(elem.attributes);
+                walk(elem.children, builder);
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'liTagFormatter0': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<p class="' + 'indent--hanging__' + level + '">' + nextLegalNumber());
+                walk(elem.children, builder);
+                builder.addInline('</p>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+            'anchorTagFormatter': function (elem, walk, builder, formatOptions) {
+                builder.openBlock({ leadingLineBreaks: formatOptions.leadingLineBreaks || 1 });
+                builder.addInline('<a href="' + getHrefUrl(elem.attributes) + '">');
+                walk(elem.children, builder);
+                builder.addInline('</a>');
+                builder.closeBlock({ trailingLineBreaks: formatOptions.trailingLineBreaks || 1 });
+            },
+        },
+        selectors: [
+            {
+                selector: 'p.title',
+                format: 'titleTagFormatter',
+            },
+            {
+                selector: 'h1',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h2',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h3',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h4',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'h5',
+                format: 'headerTagFormatter',
+            },
+            {
+                selector: 'ol.lst-0',
+                format: 'olTagFormatter0',
+            },
+            {
+                selector: 'ol.lst-1',
+                format: 'olTagFormatter1',
+            },
+            {
+                selector: 'ol.lst-2',
+                format: 'olTagFormatter2',
+            },
+            {
+                selector: 'li.li-bullet-0',
+                format: 'liTagFormatter0',
+            },
+            {
+                selector: 'a',
+                format: 'anchorTagFormatter'
+            }
+        ]
+    });
 }
 

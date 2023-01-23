@@ -4,7 +4,7 @@
     <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
     <Name>gdochtml2html</Name>
     <RootNamespace>gdochtml2html</RootNamespace>
-    <ScriptArguments>convert "test\Biodiversity.zip"</ScriptArguments>
+    <ScriptArguments>-c -f "test\Multiculturalism and Anti-Racism.zip"</ScriptArguments>
     <SaveNodeJsSettingsInProjectFile>True</SaveNodeJsSettingsInProjectFile>
   </PropertyGroup>
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
@@ -32,9 +32,23 @@
   </PropertyGroup>
   <ItemGroup>
     <None Include="app.ts" />
+    <Content Include="test\legal_style.css" />
     <Content Include="package.json" />
     <Content Include="README.md" />
+    <Content Include="test\Air Quality.zip" />
+    <Content Include="test\Climate Change.zip" />
+    <Content Include="test\google_doc_numbering_style.css" />
+    <Content Include="test\Health including Mental Health.zip" />
+    <Content Include="test\Media and Communications Policy.zip" />
+    <Content Include="test\Multiculturalism and Anti-Racism.zip" />
+    <Content Include="test\Older People.zip" />
+    <Content Include="test\Public Sector.zip" />
+    <Content Include="test\style.css" />
     <Content Include="tsconfig.json" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="test\" />
+    <Folder Include="test\Health including Mental Health\" />
   </ItemGroup>
   <Import Project="$(VSToolsPath)\Node.js Tools\Microsoft.NodejsToolsV2.targets" />
   <ProjectExtensions>
